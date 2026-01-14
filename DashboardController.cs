@@ -4,11 +4,11 @@ using System.Linq;
 using System.Web;
 using System.Web.Mvc;
 
-namespace FinalProject.Areas.Parent.Controllers
+namespace FinalProject.Areas.Tutor.Controllers
 {
     public class DashboardController : Controller
     {
-        // GET: Parent/Dashboard
+        // GET: Tutor/Dashboard
         public ActionResult Index()
         {
             return View();

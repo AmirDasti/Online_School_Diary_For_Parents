@@ -5,18 +5,14 @@ using System.Collections.Generic;
 using System.Data.Entity;
 using System.Globalization;
 using System.Linq;
-using System.Data.Entity;
 using System.Web;
 using System.Web.Mvc;
-using System.Windows.Forms;
-using static System.Collections.Specialized.BitVector32;
 
-namespace FinalProject.Areas.Parent.Controllers
+namespace FinalProject.Areas.Tutor.Controllers
 {
     public class DateComplaintController : Controller
     {
-        // GET: Parent/DateComplaint
-
+        // GET: Tutor/DateComplaint
         OSDFinalEntities db = new OSDFinalEntities();
         public ActionResult Index()
         {
@@ -54,12 +50,7 @@ namespace FinalProject.Areas.Parent.Controllers
              }
              db.SaveChanges();*/
 
-            var std = db.AddStudentDatas.Where(x => x.parent_id == userId).FirstOrDefault();
-
-
-            string stdname = std.Name;
-            string section = std.Section;
-
+            
 
             int newViewComplainCount = GetViewComplaintCount();
             ViewBag.NewViewComplaintCount = newViewComplainCount;
@@ -72,21 +63,13 @@ namespace FinalProject.Areas.Parent.Controllers
             db.SaveChanges();
 
 
-
-            List<string> specific = db.specific_complaint
-         .Where(x => x.Std_Name == stdname)
-
-         .Select(x => x.complaint_date.ToString()).Distinct()
-         .ToList();
-
             List<string> Complaint = db.complaints
 
-                .Where(x => x.section == section)
+                .Where(x => x.reaciver_id == userId)
                 .Select(x => x.complaint_date.ToString()).Distinct()
                 .ToList();
 
-
-            if (stdname == null)
+            if (userId == 0)
             {
                 // handle situation when user does not have a child associated with their account
                 return View("NoChildFound");
@@ -95,36 +78,32 @@ namespace FinalProject.Areas.Parent.Controllers
             {
 
                 var complaints = db.complaints.Where(c => Complaint.Contains(c.complaint_date.ToString())).OrderBy(c => c.complaint_date).Distinct().ToList();
-                var specifics = db.specific_complaint.Where(c => specific.Contains(c.complaint_date.ToString())).OrderBy(c => c.complaint_date).Distinct().ToList();
+               
 
 
 
                 var viewModel = new ComplaintViewModel
                 {
                     complaints = complaints,
-                   /* specific_Complaints = specifics,*/
+               
 
                 };
-                /* ViewBag.NewNotificationCount = GetNewNotificationCount();*/
+                ViewBag.NewNotificationCount = GetViewComplaintCount();
                 return View(viewModel);
             }
-
-        }
+            }
             catch (Exception ex)
             {
-                // Handle the exception or log the error
-                // For example:
-                Console.WriteLine("An error occurred: " + ex.Message);
+                Console.WriteLine("An error occurred in the ViewResponse action: " + ex.Message);
+                // Handle the error in an appropriate manner, such as displaying an error message to the user or redirecting to an error page
                 return View();
             }
+
         }
 
-
-
-        public ActionResult ViewComplaintDate(string date)
+        public ActionResult ViewComplaintDate(DateTime? date)
         {
-            try
-            {
+            try {
                 string username = Session["User-Name"] as string;
 
                 if (username == null)
@@ -134,105 +113,62 @@ namespace FinalProject.Areas.Parent.Controllers
 
                 }
                 var user = db.CreateAccounts.SingleOrDefault(u => u.Username == username);
-                int userId = user.account_id;
-                var students = db.AddStudentDatas.Where(x => x.parent_id == userId).ToList();
+            int userId = user.account_id;
 
-                var names = db.AddStudentDatas.Where(x => x.parent_id == userId).Select(x => x.Name).ToList();
+            var unseenComplaintsCount = db.complaints.Where(c => !c.Checked && c.reaciver_id == userId).Count();
 
-                foreach (var name in names)
+            if (unseenComplaintsCount > 0)
+            {
+                var unseenComplaints = db.complaints.Where(c => !c.Checked && c.reaciver_id == userId).ToList();
+                foreach (var complaint in unseenComplaints)
                 {
-                    var allcom = db.specific_complaint.Where(x => !x.Checked && x.Std_Name == name);
-
-                    foreach (var updated in allcom)
-                    {
-                        updated.Checked = true;
-                    }
-                    db.SaveChanges();
-                }
-
-                var unseenComplaints = db.complaints.Where(c => !c.Checked && c.reaciver_id == userId);
-
-                foreach (var unseen in unseenComplaints)
-                {
-                    unseen.Checked = true;
+                    complaint.Checked = true;
                 }
                 db.SaveChanges();
+            }
 
-                if (string.IsNullOrEmpty(date))
+            if (date != null)
+            {
+                var parsedDate = date.Value;
+
+                List<string> ReciverName = db.complaints
+       .Where(x => x.reaciver_id == userId && DbFunctions.TruncateTime(x.complaint_date) == parsedDate.Date)
+       .Select(x => x.complaint_date.ToString())
+       .ToList();
+
+
+
+                if (ReciverName != null && ReciverName.Any())
                 {
-                    // handle empty date parameter
-                }
-                else
-                {
-                    try
+                    using (var db = new OSDFinalEntities())
                     {
-                        foreach (var student in students)
+                        var comp = db.complaints.Where(x => ReciverName.Contains(x.complaint_date.ToString())).OrderByDescending(x => x.complaint_date).ToList();
+
+                        var viewModel = new ComplaintViewModel
                         {
-                            string stdname = student.Name;
-                            string section = student.Section;
+                            complaints = comp
+                        };
 
-                            var parsedDate = DateTime.ParseExact(date, "yyyy-dd-MM", CultureInfo.InvariantCulture);
-                            if (DateTime.TryParseExact(date, "yyyy-dd-MM", CultureInfo.InvariantCulture, DateTimeStyles.None, out parsedDate))
-                            {
-                                List<string> ReciverName = db.complaints
-                                    .Where(x => x.section == section || x.reaciver_id == userId)
-                                    .Select(x => x.complaint_date.ToString())
-                                    .ToList();
-
-                                List<string> specific = db.specific_complaint
-                                    .Where(x => x.Std_Name == stdname)
-                                    .Select(x => x.complaint_date.ToString())
-                                    .ToList();
-
-                                if (ReciverName != null && ReciverName.Any())
-                                {
-                                    using (var db = new OSDFinalEntities())
-                                    {
-                                        var complaints = db.complaints
-                                            .Where(c => ReciverName.Contains(c.complaint_date.ToString()) && DbFunctions.TruncateTime(c.complaint_date) == parsedDate.Date)
-                                            .ToList();
-
-                                        var specifics = db.specific_complaint
-                                            .Where(c => specific.Contains(c.complaint_date.ToString()) && DbFunctions.TruncateTime(c.complaint_date) == parsedDate.Date)
-                                            .ToList();
-
-                                        var viewModel = new ComplaintViewModel
-                                        {
-                                            complaints = complaints,
-                                            specific_Complaints = specifics
-                                        };
-
-                                        return View(viewModel);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    catch (FormatException)
-                    {
-                        // handle invalid date format
+                        return View(viewModel);
                     }
                 }
+            }
 
-                return RedirectToAction("ViewComplaintDate");
+            // handle empty or invalid date parameter
+            // For example, you can redirect to an error page or display a message
+            return RedirectToAction("Index");
             }
             catch (Exception ex)
             {
-                // Handle the exception or log the error
-                // For example:
-                Console.WriteLine("An error occurred: " + ex.Message);
-                // Redirect to an error page or display an error message
-                return View();
+                Console.WriteLine("An error occurred in the ViewResponse action: " + ex.Message);
+                // Handle the error in an appropriate manner, such as displaying an error message to the user or redirecting to an error page
+                return RedirectToAction("Index");
             }
         }
 
-
-
-
         public ActionResult Reply(string details, int teacherid)
         {
-            try
-            {
+            try {
                 string username = Session["User-Name"] as string;
 
                 if (username == null)
@@ -242,76 +178,70 @@ namespace FinalProject.Areas.Parent.Controllers
 
                 }
                 string teacherName = db.CreateAccounts
-                                    .Where(u => u.account_id == teacherid)
-                                    .Select(u => u.Username)
-                                    .FirstOrDefault();
+                            .Where(u => u.account_id == teacherid)
+                            .Select(u => u.Username)
+                            .FirstOrDefault();
 
-                // Store the section and Username parameters in session variables
-                Session["Details"] = details;
-                Session["ReplyUsername"] = teacherName;
-                return View();
+            // Store the section and Username parameters in session variables
+            Session["Details"] = details;
+            Session["ReplyUsername"] = teacherName;
+            return View();
             }
             catch (Exception ex)
             {
-                // Handle the exception or log the error
-                // For example:
-                Console.WriteLine("An error occurred: " + ex.Message);
-                // Redirect to an error page or display an error message
+                Console.WriteLine("An error occurred in the ViewResponse action: " + ex.Message);
+                // Handle the error in an appropriate manner, such as displaying an error message to the user or redirecting to an error page
                 return View();
             }
-        }
 
+        }
         [HttpPost]
         public ActionResult Reply(Whole_response obj, string details, string teacherName)
         {
-            try
+            try { 
+            /* Session["Details"] = details;
+             Session["ReplyUsername"] = Username;*/
+            string username = Session["User-Name"].ToString();
+            var user = db.CreateAccounts.SingleOrDefault(u => u.Username == username);
+            int userId = user.account_id;
+
+
+            var teacher = db.CreateAccounts.SingleOrDefault(u => u.Username == teacherName);
+            int teacherid = teacher.account_id;
+            //here is Sender Parameter Username but you use to hidden in view then this name save in data base
+            /* int Sender = teacherid;*/
+            string originalcomplaint = details;
+            // Create a new whole_response object and save it to the database
+            Whole_response sd = new Whole_response()
             {
-                string username = Session["User-Name"].ToString();
-                var user = db.CreateAccounts.SingleOrDefault(u => u.Username == username);
-                int userId = user.account_id;
-
-                var teacher = db.CreateAccounts.SingleOrDefault(u => u.Username == teacherName);
-                int teacherid = teacher.account_id;
-
-                string originalcomplaint = details;
-
-                // Create a new whole_response object and save it to the database
-               Whole_response   sd = new Whole_response()
-                {
-                    sender_id = userId,
-                    date = DateTime.Now,
-                    respdetail = obj.respdetail,
-                    receiver_id = teacherid,
-                    OriginalComplaint = originalcomplaint,
-                };
-
-                db.Whole_response.Add(sd);
-                db.SaveChanges();
-
-                sd.receiver_id = 0;
-                sd.sender_id = 0;
-                sd.respdetail = "";
-                ModelState.Clear();
-
-                // Return the view with the new whole_response object as the model
-                return View();
+                sender_id = userId,
+                /* teacher_id = Sender,*/
+                date = DateTime.Now,
+                respdetail = obj.respdetail,
+                receiver_id = teacherid,
+                OriginalComplaint = originalcomplaint,
+            };
+            db.Whole_response.Add(sd);
+            db.SaveChanges();
+            sd.receiver_id = 0;
+            sd.sender_id = 0;
+            sd.respdetail = "";
+            ModelState.Clear();
+            // Return the view with the new whole_response object as the model
+            return View(sd);
             }
             catch (Exception ex)
             {
-                // Handle the exception or log the error
-                // For example:
-                Console.WriteLine("An error occurred: " + ex.Message);
-                // Redirect to an error page or display an error message
-                return View();
+                Console.WriteLine("An error occurred in the ViewResponse action: " + ex.Message);
+                // Handle the error in an appropriate manner, such as displaying an error message to the user or redirecting to an error page
+                return View("Error");
             }
         }
-
 
 
         public ActionResult ViewResponse()
         {
-            try
-            {
+            try {
                 string username = Session["User-Name"] as string;
 
                 if (username == null)
@@ -321,91 +251,65 @@ namespace FinalProject.Areas.Parent.Controllers
 
                 }
                 var user = db.CreateAccounts.SingleOrDefault(u => u.Username == username);
-                int userId = user.account_id;
+            int userId = user.account_id;
 
-                if (string.IsNullOrEmpty(username))
+            if (string.IsNullOrEmpty(username))
+            {
+                ViewBag.Message = "User name not found in session.";
+                return View();
+            }
+
+            List<string> ReciverName = db.Whole_response.Where(x => x.sender_id == userId).Select(x => x.respdetail).ToList();
+
+            if (ReciverName.Any())
+            {
+                var comp = db.Whole_response.Where(x => ReciverName.Contains(x.respdetail)).OrderBy(x => x.date).ToList();
+
+                var viewModel = new ResponseViewModel
                 {
-                    ViewBag.Message = "User name not found in session.";
-                    return View();
-                }
+                    whole_Responses = comp,
+                };
 
-                List<string> ReciverName = db.Whole_response.Where(x => x.receiver_id == userId).Select(x => x.respdetail).ToList();
-
-                if (ReciverName.Any())
+                return View(viewModel);
+            }
+            else
+            {
+                var viewModel = new ResponseViewModel
                 {
-                    var comp = db.Whole_response.Where(x => ReciverName.Contains(x.respdetail)).OrderBy(x => x.date).ToList();
+                    whole_Responses = new List<Whole_response>(),
+                };
 
-                    var viewModel = new ResponseViewModel
-                    {
-                        whole_Responses = comp,
-                    };
-
-                    return View(viewModel);
-                }
-                else
-                {
-                    var viewModel = new ResponseViewModel
-                    {
-                        whole_Responses = new List<Whole_response>(),
-                    };
-
-                    ViewBag.Message = "No data found for user " + username;
-                    return View(viewModel);
-                }
+                ViewBag.Message = "No data found for user " + username;
+                return View(viewModel);
+            }
             }
             catch (Exception ex)
             {
-                // Handle the exception or log the error
-                // For example:
-                Console.WriteLine("An error occurred: " + ex.Message);
-                // Redirect to an error page or display an error message
-                return View();
+                Console.WriteLine("An error occurred in the ViewResponse action: " + ex.Message);
+                // Handle the error in an appropriate manner, such as displaying an error message to the user or redirecting to an error page
+                return View("Error");
             }
         }
-
-
-
 
         private int GetViewComplaintCount()
         {
-            try
-            {
-                string Username = Session["User-Name"].ToString();
-                var user = db.CreateAccounts.SingleOrDefault(u => u.Username == Username);
-                int userid = user.account_id;
-                var users = db.AddStudentDatas.Where(u => u.parent_id == userid).Select(x => x.Name).ToList();
-                int newSpecificCount = 0;
-                int zero = 0;
-                foreach (var name in users)
-                {
-                    int count = db.specific_complaint.Where(c => c.Checked == false && c.Std_Name == name).Count();
-                    if (count > 0)
-                    {
-                        newSpecificCount += count;
-                    }
-                    else
-                    {
-                        zero = 0;
-                        break;
-                    }
-                }
+            // Logic to retrieve the count of new, unchecked notifications from your data source
+            // For example:
+            string Username = Session["User-Name"].ToString();
+            var user = db.CreateAccounts.SingleOrDefault(u => u.Username == Username);
+            int userid = user.account_id;
+            var users = db.AddStudentDatas.Where(u => u.parent_id == userid).Select(x => x.Name).ToList();
 
-                int newwholeCount = db.complaints.Where(c => c.Checked == false && c.reaciver_id == userid).Count();
 
-                int totalCount = newSpecificCount + newwholeCount;
 
-                return totalCount;
-            }
-            catch (Exception ex)
-            {
-                // Handle the exception or log the error
-                // For example:
-                Console.WriteLine("An error occurred: " + ex.Message);
-                // Return a default count or an error indicator
-                return -1;
-            }
+
+            int newwholeCount = db.complaints.Where(c => c.Checked == false && c.reaciver_id == userid).Count();
+
+
+
+
+
+            return newwholeCount;
         }
-
-
     }
 }
